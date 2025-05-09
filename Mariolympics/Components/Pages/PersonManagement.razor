@@ -1,0 +1,61 @@
+@page "/people"
+
+@inject PersonRepository PersonRepository
+
+<h3>People</h3>
+
+<table class="table">
+    <thead>
+    <tr>
+        <th>First Name</th>
+        <th>Last Name</th>
+        <th>Email</th>
+        <th>Phone</th>
+        <th></th>
+    </tr>
+    </thead>
+    <tbody>
+    @foreach (var person in Persons)
+    {
+        <tr>
+            <td>@person.FirstName</td>
+            <td>@person.LastName</td>
+            <td>@person.Email</td>
+            <td>@person.Phone</td>
+            <td></td>
+        </tr>
+    }
+    <tr>
+        <td><input class="form-control" @bind="NewPerson.FirstName" /></td>
+        <td><input class="form-control" @bind="NewPerson.LastName" /></td>
+        <td><input class="form-control" @bind="NewPerson.Email" /></td>
+        <td><input class="form-control" @bind="NewPerson.Phone" /></td>
+        <td><button class="btn btn-primary btn-sm" @onclick="AddPerson" /></td>
+    </tr>
+    </tbody>
+</table>
+
+@code {
+    private List<Person> Persons { get; set; } = new List<Person>();
+
+    private Person NewPerson { get; set; } = new Person();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+
+        if (firstRender)
+        {
+            Persons = await PersonRepository.GetPersonsAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task AddPerson()
+    {
+        await PersonRepository.AddPersonAsync(NewPerson);
+        NewPerson = new Person();
+        Persons = await PersonRepository.GetPersonsAsync();
+    }
+}
+
