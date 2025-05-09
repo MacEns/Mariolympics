@@ -26,11 +26,13 @@ services.AddOptions();
 
 services.AddDbContextFactory<MariolympicsContext>(options =>
 {
-
     options.UseSqlite(builder.Configuration.GetConnectionString("MariolympicsContext"));
 });
 
+services.AddTransient<TournamentRepository, TournamentRepository>();
 services.AddTransient<PersonRepository, PersonRepository>();
+
+services.AddBlazorBootstrap();
 
 var app = builder.Build();
 

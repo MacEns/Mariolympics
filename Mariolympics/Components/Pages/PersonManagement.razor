@@ -22,7 +22,11 @@
             <td>@person.LastName</td>
             <td>@person.Email</td>
             <td>@person.Phone</td>
-            <td></td>
+            <td class="text-center">
+                <button class="btn btn-danger btn-sm my-auto" @onclick="() => RemovePerson(person.Id)">
+                    <Icon Name="IconName.Dash"></Icon>
+                </button>
+            </td>
         </tr>
     }
     <tr>
@@ -30,7 +34,11 @@
         <td><input class="form-control" @bind="NewPerson.LastName" /></td>
         <td><input class="form-control" @bind="NewPerson.Email" /></td>
         <td><input class="form-control" @bind="NewPerson.Phone" /></td>
-        <td><button class="btn btn-primary btn-sm" @onclick="AddPerson" /></td>
+        <td class="text-center">
+            <button class="btn btn-primary btn-sm my-auto" @onclick="AddPerson">
+                <Icon Name="IconName.Plus"></Icon>
+            </button>
+        </td>
     </tr>
     </tbody>
 </table>
@@ -55,6 +63,13 @@
     {
         await PersonRepository.AddPersonAsync(NewPerson);
         NewPerson = new Person();
+        Persons = await PersonRepository.GetPersonsAsync();
+    }
+
+    private async Task RemovePerson(int id)
+    {
+        var person = Persons.FirstOrDefault(x => x.Id == id);
+        await PersonRepository.RemovePersonAsync(person);
         Persons = await PersonRepository.GetPersonsAsync();
     }
 }

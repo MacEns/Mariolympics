@@ -1,0 +1,108 @@
+@page "/tournament"
+@inject PersonRepository PersonRepository
+
+<PageTitle>Mariolympics</PageTitle>
+
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1>Tournament</h1>
+
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="GenerateTournament">Generate Tournament</button>
+    </div>
+
+    <!--
+        Randomize order of persons for draft
+        Select character for each person
+        Randomize order of players for each game
+        Generate tournament brackets
+    -->
+
+</div>
+
+@code {
+    private List<Tournament> Tournaments { get; set; }
+    private List<Person> Persons { get; set; }
+
+    private Tournament Tournament { get; set; }
+    private List<Player> Players { get; set; } = [];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Persons = await PersonRepository.GetPersonsAsync();
+        }
+
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    private void GenerateTournament()
+    {
+        List<string> players = new List<string> { "Player1", "Player2", "Player3", "Player4", "Player5" };
+        var bracket = GenerateBracket(players);
+
+        Console.WriteLine("Tournament Bracket:");
+        foreach (var round in bracket)
+        {
+            Console.WriteLine($"Round {round.Key}:");
+            foreach (var match in round.Value)
+            {
+                Console.WriteLine($"  {match.Item1} vs {match.Item2}");
+            }
+        }
+    }
+
+    public static Dictionary<int, List<(string, string)>> GenerateBracket(List<string> players)
+    {
+        int totalPlayers = players.Count;
+        int nextPowerOfTwo = 1;
+        while (nextPowerOfTwo < totalPlayers)
+        {
+            nextPowerOfTwo *= 2;
+        }
+
+        int byes = nextPowerOfTwo - totalPlayers;
+        List<string> firstRound = new List<string>(players);
+
+        // Add byes as "BYE"
+        for (int i = 0; i < byes; i++)
+        {
+            firstRound.Add("BYE");
+        }
+
+        // Shuffle players (optional)
+        Random rng = new Random();
+        for (int i = firstRound.Count - 1; i > 0; i--)
+        {
+            int swapIndex = rng.Next(i + 1);
+            (firstRound[i], firstRound[swapIndex]) = (firstRound[swapIndex], firstRound[i]);
+        }
+
+        // Create the bracket
+        Dictionary<int, List<(string, string)>> bracket = new Dictionary<int, List<(string, string)>>();
+        int round = 1;
+        List<(string, string)> matches = new List<(string, string)>();
+
+        for (int i = 0; i < firstRound.Count; i += 2)
+        {
+            matches.Add((firstRound[i], firstRound[i + 1]));
+        }
+
+        bracket[round] = matches;
+
+        // Generate subsequent rounds
+        while (matches.Count > 1)
+        {
+            round++;
+            List<(string, string)> nextRound = new List<(string, string)>();
+            for (int i = 0; i < matches.Count; i += 2)
+            {
+                nextRound.Add(("Winner of Match " + (i + 1), "Winner of Match " + (i + 2)));
+            }
+            matches = nextRound;
+            bracket[round] = matches;
+        }
+
+        return bracket;
+    }
+}

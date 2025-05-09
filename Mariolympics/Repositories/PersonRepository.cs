@@ -16,4 +16,18 @@ public class PersonRepository(IDbContextFactory<MariolympicsContext> dbContextFa
         await context.Person.AddAsync(person);
         await context.SaveChangesAsync();
     }
+
+    public async Task UpdatePersonAsync(Person person)
+    {
+        var context = await dbContextFactory.CreateDbContextAsync();
+        context.Person.Update(person);
+        await context.SaveChangesAsync();
+    }
+
+    public async Task RemovePersonAsync(Person person)
+    {
+        var context = await dbContextFactory.CreateDbContextAsync();
+        context.Person.Remove(person);
+        await context.SaveChangesAsync();
+    }
 }
