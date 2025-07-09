@@ -15,6 +15,8 @@ public class Character
     public static Character Yoshi => new("Yoshi");
     public static Character DonkeyKong => new("DonkeyKong");
 
+    public static List<Character> All => new() { Mario, Luigi, Peach, Daisy, Wario, Waluigi, Yoshi, DonkeyKong };
+
     public override string ToString()
     {
         return Value;

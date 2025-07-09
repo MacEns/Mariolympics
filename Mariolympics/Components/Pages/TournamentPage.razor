@@ -7,7 +7,7 @@
     <h1>Tournament</h1>
 
     <div class="btn-toolbar mb-2 mb-md-0">
-        <button class="btn btn-sm btn-outline-secondary" @onclick="GenerateTournament">Generate Tournament</button>
+        <button class="btn btn-sm btn-outline-primary" @onclick="GenerateTournament">Generate Tournament</button>
     </div>
 
     <!--
@@ -16,8 +16,9 @@
         Randomize order of players for each game
         Generate tournament brackets
     -->
-
 </div>
+
+<TournamentBracket Bracket="Tournament?.Brackets.FirstOrDefault()" />
 
 @code {
     private List<Tournament> Tournaments { get; set; }
@@ -38,36 +39,41 @@
 
     private void GenerateTournament()
     {
-        List<string> players = new List<string> { "Player1", "Player2", "Player3", "Player4", "Player5" };
+        var players = Persons
+            .Select(x => new Player { Person = x, CharacterName = Character.All[Persons.IndexOf(x)].ToString() })
+            .ToList();
         var bracket = GenerateBracket(players);
 
         Console.WriteLine("Tournament Bracket:");
-        foreach (var round in bracket)
+        foreach (var round in bracket.Rounds)
         {
-            Console.WriteLine($"Round {round.Key}:");
-            foreach (var match in round.Value)
+            Console.WriteLine($"Round {bracket.Rounds.ToList().IndexOf(round)}:");
+            foreach (var match in round.Matches)
             {
-                Console.WriteLine($"  {match.Item1} vs {match.Item2}");
+                Console.WriteLine($"  {match.Player1?.Person.FullName} vs {match.Player2?.Person.FullName}");
             }
         }
+
+        Tournament = new();
+        Tournament.Brackets.Add(bracket);
     }
 
-    public static Dictionary<int, List<(string, string)>> GenerateBracket(List<string> players)
+    private static Bracket GenerateBracket(List<Player> players)
     {
-        int totalPlayers = players.Count;
-        int nextPowerOfTwo = 1;
+        var totalPlayers = players.Count;
+        var nextPowerOfTwo = 1;
         while (nextPowerOfTwo < totalPlayers)
         {
             nextPowerOfTwo *= 2;
         }
 
-        int byes = nextPowerOfTwo - totalPlayers;
-        List<string> firstRound = new List<string>(players);
+        var byes = nextPowerOfTwo - totalPlayers;
+        List<Player> firstRound = new List<Player>(players);
 
-        // Add byes as "BYE"
+        // Add byes as null
         for (int i = 0; i < byes; i++)
         {
-            firstRound.Add("BYE");
+            firstRound.Add(null);
         }
 
         // Shuffle players (optional)
@@ -79,28 +85,74 @@
         }
 
         // Create the bracket
-        Dictionary<int, List<(string, string)>> bracket = new Dictionary<int, List<(string, string)>>();
-        int round = 1;
-        List<(string, string)> matches = new List<(string, string)>();
+        var bracket = new Bracket
+        {
+            Game = "Tournament Game",
+            Rounds = new List<Round>()
+        };
+
+        int roundNumber = 1;
+        List<(Player, Player)> matches = new List<(Player, Player)>();
 
         for (int i = 0; i < firstRound.Count; i += 2)
         {
             matches.Add((firstRound[i], firstRound[i + 1]));
         }
 
-        bracket[round] = matches;
+        bracket.Rounds.Add(new Round
+        {
+            RoundNumber = roundNumber,
+            Matches = matches.Select(m => new Match
+            {
+                Player1 = m.Item1,
+                Player2 = m.Item2
+            }).ToList()
+        });
 
         // Generate subsequent rounds
         while (matches.Count > 1)
         {
-            round++;
-            List<(string, string)> nextRound = new List<(string, string)>();
+            roundNumber++;
+            List<(Player, Player)> nextRound = new List<(Player, Player)>();
             for (int i = 0; i < matches.Count; i += 2)
             {
-                nextRound.Add(("Winner of Match " + (i + 1), "Winner of Match " + (i + 2)));
+                nextRound.Add((null, null)); // Placeholder for winners
             }
+
             matches = nextRound;
-            bracket[round] = matches;
+            bracket.Rounds.Add(new Round
+            {
+                RoundNumber = roundNumber,
+                Matches = matches.Select(m => new Match
+                {
+                    Player1 = m.Item1,
+                    Player2 = m.Item2,
+                }).ToList()
+            });
+        }
+
+        // Add third-place game
+        if (roundNumber > 1)
+        {
+            var semifinalLosers = new List<Player>
+            {
+                null, // Placeholder for the first semifinal loser
+                null  // Placeholder for the second semifinal loser
+            };
+
+            roundNumber++;
+            bracket.Rounds.Add(new Round
+            {
+                RoundNumber = roundNumber,
+                Matches = new List<Match>
+                {
+                    new Match
+                    {
+                        Player1 = semifinalLosers[0],
+                        Player2 = semifinalLosers[1],
+                    }
+                }
+            });
         }
 
         return bracket;

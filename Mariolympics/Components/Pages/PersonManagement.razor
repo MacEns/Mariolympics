@@ -44,9 +44,9 @@
 </table>
 
 @code {
-    private List<Person> Persons { get; set; } = new List<Person>();
+    private List<Person> Persons { get; set; } = [];
 
-    private Person NewPerson { get; set; } = new Person();
+    private Person NewPerson { get; set; } = new();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

@@ -1,0 +1,123 @@
+@using Mariolympics.Models
+
+<style>
+    .bracket-container {
+        display: flex;
+        flex-direction: row;
+        gap: 20px;
+    }
+
+    .round {
+        border: 1px solid #ccc;
+        padding: 10px;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .matches {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+        flex-grow: 1;
+        border: 1px solid #cc0000;
+        gap: 10px;
+    }
+
+    .match {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 5px;
+        border: 1px solid #ddd;
+        border-radius: 3px;
+        background-color: #fff;
+    }
+
+    .player {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.2em;
+        text-align: center;
+    }
+
+    .vs {
+        margin: 0 10px;
+        font-weight: bold;
+    }
+</style>
+
+<div class="bracket-container">
+    @if (Bracket != null && Bracket.Rounds.Any())
+    {
+        @foreach (var round in Bracket.Rounds)
+        {
+            <div class="round">
+                <h3>Round @round.RoundNumber</h3>
+                <div class="matches">
+                    @foreach (var match in round.Matches)
+                    {
+                        <div class="match">
+                            <div class="player">
+                                @(match.Player1?.Person?.FullName ?? "BYE")
+                                @if (match.Player1 != null)
+                                {
+                                    <button class="btn btn-sm btn-primary" @onclick="() => SetWinner(match, match.Player1)">Set Winner</button>
+                                }
+                            </div>
+                            <div class="vs">vs</div>
+                            <div class="player">
+                                @(match.Player2?.Person?.FullName ?? "BYE")
+                                @if (match.Player2 != null)
+                                {
+                                    <button class="btn btn-sm btn-primary" @onclick="() => SetWinner(match, match.Player2)">Set Winner</button>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <p>No bracket available. Generate a tournament to display the bracket.</p>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Bracket Bracket { get; set; }
+
+    private void SetWinner(Match match, Player winner)
+    {
+        match.Winner = winner;
+
+        // Find the next round
+        var currentRoundIndex = Bracket.Rounds.IndexOf(Bracket.Rounds.First(r => r.Matches.Contains(match)));
+        var currentMatchIndex = Bracket.Rounds[currentRoundIndex].Matches.IndexOf(match);
+        if (currentRoundIndex < Bracket.Rounds.Count - 1)
+        {
+            var nextRound = Bracket.Rounds[currentRoundIndex + 1];
+            var nextMatchIndex = currentMatchIndex / 2;
+
+            if (nextMatchIndex != -1)
+            {
+                var nextMatch = nextRound.Matches[nextMatchIndex];
+
+                if (nextMatch.Player1 == null)
+                {
+                    nextMatch.Player1 = winner;
+                }
+                else if (nextMatch.Player2 == null)
+                {
+                    nextMatch.Player2 = winner;
+                }
+            }
+        }
+
+        StateHasChanged();
+    }
+}

@@ -9,5 +9,5 @@ public class Round
 
     public int RoundNumber { get; set; }
 
-    public ICollection<Match> Matches { get; set; } = new List<Match>();
+    public List<Match> Matches { get; set; } = new List<Match>();
 }

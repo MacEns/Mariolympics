@@ -1,0 +1,606 @@
+@page "/bracket-test"
+
+@using Mariolympics.Models
+
+@* 
+Tournament Bracket with Proper Bye Distribution and Bronze Medal Match:
+- Uses the Bracket model to manage tournament structure
+- Players are seeded #1 (highest) to #N (lowest) based on their order in the Players list
+- Lower seeded players (higher numbers) play in Round 1
+- Higher seeded players (lower numbers) receive byes and enter in Round 2
+- This ensures the best players have the easiest path to the finals
+- Includes a bronze medal (third place) match between the losers of the semi-finals
+- Tracks tournament progress and displays champion and bronze medal winner when complete
+- Reset functionality restores bracket to original state (bye players in original positions)
+*@
+
+<style>
+    .bracket-container {
+        display: flex;
+        flex-direction: row;
+        align-items: stretch;
+        gap: 40px;
+        padding: 20px;
+        overflow-x: auto;
+        min-height: 600px;
+    }
+
+    .round {
+        display: flex;
+        flex-direction: column;
+        min-width: 200px;
+        position: relative;
+        flex: 1;
+    }
+
+    .round h3 {
+        text-align: center;
+        margin-bottom: 20px;
+        padding: 10px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 8px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+
+    .matches {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-evenly;
+        position: relative;
+        min-height: 500px;
+        padding: 20px 0;
+    }
+
+    /* Dynamic spacing for different rounds */
+    .round:nth-child(1) .matches {
+        gap: 20px;
+    }
+
+    .round:nth-child(2) .matches {
+        gap: 60px;
+    }
+
+    .round:nth-child(3) .matches {
+        gap: 120px;
+    }
+
+    .round:nth-child(4) .matches {
+        gap: 240px;
+    }
+
+    /* Center matches vertically for later rounds */
+    .round:not(:first-child) .matches {
+        justify-content: center;
+    }
+
+    .match {
+        background: white;
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        overflow: hidden;
+        position: relative;
+        transition: all 0.3s ease;
+        min-height: 80px;
+    }
+
+    .match:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        border-color: #667eea;
+    }
+
+    .match.completed {
+        border-color: #48bb78;
+        box-shadow: 0 4px 12px rgba(72, 187, 120, 0.2);
+    }
+
+    .match.completed:hover {
+        border-color: #38a169;
+        box-shadow: 0 6px 20px rgba(72, 187, 120, 0.3);
+    }
+
+    .match-content {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+
+    .player {
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid #e2e8f0;
+        transition: all 0.2s ease;
+    }
+
+    .player:last-child {
+        border-bottom: none;
+    }
+
+    .player:hover {
+        background-color: #f8fafc;
+    }
+
+    .player.winner {
+        background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        color: white;
+        font-weight: 600;
+    }
+
+    .player-btn {
+        background: none;
+        border: none;
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: #2d3748;
+        cursor: pointer;
+        padding: 8px 12px;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+        flex-grow: 1;
+        text-align: left;
+    }
+
+    .player-btn:hover:not(:disabled) {
+        background-color: #edf2f7;
+        color: #1a202c;
+    }
+
+    .player-btn:disabled {
+        color: #a0aec0;
+        cursor: not-allowed;
+        font-style: italic;
+    }
+
+    .player.winner .player-btn {
+        color: white;
+    }
+
+    .seed-number {
+        font-size: 0.8rem;
+        color: #718096;
+        font-weight: 600;
+        margin-right: 8px;
+        min-width: 20px;
+    }
+
+    .player.winner .seed-number {
+        color: rgba(255,255,255,0.8);
+    }
+
+    /* Bye player styling */
+    .player.bye-player {
+        background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e0 100%);
+        border: 2px dashed #a0aec0;
+    }
+
+    .bye-indicator {
+        font-size: 0.8rem;
+        color: #718096;
+        font-weight: 600;
+        margin-right: 8px;
+        font-style: italic;
+    }
+
+    /* Bracket connecting lines */
+    .match::before {
+        content: '';
+        position: absolute;
+        left: -40px;
+        top: 50%;
+        width: 20px;
+        height: 2px;
+        background: #cbd5e0;
+        z-index: 1;
+    }
+
+    .match::after {
+        content: '';
+        position: absolute;
+        right: -40px;
+        top: 50%;
+        width: 20px;
+        height: 2px;
+        background: #cbd5e0;
+        z-index: 1;
+    }
+
+    /* Vertical connecting lines between matches */
+    .round:not(:last-child) .match:nth-child(odd)::after {
+        width: 40px;
+        right: -40px;
+    }
+
+    .round:not(:last-child) .match:nth-child(even)::after {
+        width: 40px;
+        right: -40px;
+    }
+
+    .round:last-child .match::after {
+        display: none;
+    }
+
+    /* Remove connecting lines for first round */
+    .round:first-child .match::before {
+        display: none;
+    }
+
+    /* Add tournament bracket lines between rounds */
+    .round:not(:last-child) {
+        position: relative;
+    }
+
+    .round:not(:last-child)::after {
+        content: '';
+        position: absolute;
+        right: -20px;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: linear-gradient(to bottom, transparent 20%, #cbd5e0 20%, #cbd5e0 80%, transparent 80%);
+        z-index: 0;
+    }
+
+    /* Final round styling */
+    .round.final {
+        position: relative;
+    }
+
+    .round.final::before {
+        content: '🏆';
+        position: absolute;
+        top: -40px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 2rem;
+        z-index: 2;
+    }
+
+    .round.final h3 {
+        background: linear-gradient(135deg, #ffd700 0%, #ffb700 100%);
+        color: #333;
+        font-weight: 700;
+    }
+
+    /* Bronze Medal Match Styling */
+    .bronze-medal-section {
+        margin-top: 30px;
+        padding: 15px;
+        background: #f8f9fa;
+        border: 1px solid #cd853f;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(205, 133, 63, 0.1);
+    }
+
+    .bronze-medal-title {
+        text-align: center;
+        margin-bottom: 15px;
+        padding: 8px;
+        background: #cd853f;
+        color: white;
+        border-radius: 6px;
+        font-size: 1rem;
+        font-weight: 600;
+        box-shadow: 0 1px 3px rgba(205, 133, 63, 0.2);
+    }
+
+    .bronze-medal-match {
+        display: flex;
+        justify-content: center;
+    }
+
+    .bronze-match {
+        border: 1px solid #cd853f;
+        background: #fefefe;
+        box-shadow: 0 2px 6px rgba(205, 133, 63, 0.08);
+    }
+
+    .bronze-match.completed {
+        background: #f5f5f5;
+        border-color: #a0522d;
+        box-shadow: 0 2px 8px rgba(160, 82, 45, 0.15);
+    }
+
+    .bronze-match .player.winner {
+        background: linear-gradient(135deg, #deb887 0%, #cd853f 100%);
+        color: white;
+        font-weight: 600;
+    }
+
+    .bronze-match.pending {
+        border-style: dashed;
+        background: #f8f9fa;
+        color: #6c757d;
+    }
+
+    /* Responsive design */
+    @@media (max-width: 768px) {
+        .bracket-container {
+            gap: 20px;
+            padding: 10px;
+            min-height: 400px;
+        }
+
+        .round {
+            min-width: 160px;
+        }
+
+        .matches {
+            min-height: 300px;
+            padding: 10px 0;
+        }
+
+        .match {
+            min-height: 70px;
+        }
+
+        .player {
+            padding: 10px 12px;
+        }
+
+        /* Reduce gaps for mobile */
+        .round:nth-child(1) .matches {
+            gap: 15px;
+        }
+
+        .round:nth-child(2) .matches {
+            gap: 40px;
+        }
+
+        .round:nth-child(3) .matches {
+            gap: 80px;
+        }
+
+        .round:nth-child(4) .matches {
+            gap: 160px;
+        }
+    }
+</style>
+
+<div class="row mb-3">
+    <div class="col-md-4">
+        <label for="gameSelect" class="form-label">Game/Sport:</label>
+        <select @bind="SelectedGame" class="form-select" id="gameSelect">
+            <option value="Mario Kart">Mario Kart</option>
+            <option value="Super Smash Bros">Super Smash Bros</option>
+            <option value="Mario Party">Mario Party</option>
+            <option value="Tennis">Tennis</option>
+            <option value="Custom Tournament">Custom Tournament</option>
+        </select>
+    </div>
+    <div class="col-md-8">
+        <label class="form-label">&nbsp;</label>
+        <div>
+            <button class="btn btn-primary" @onclick="GenerateBracket">Generate Bracket</button>
+            <button class="btn btn-outline-secondary ms-2" @onclick="ClearBracket">Clear Bracket</button>
+            @if (CurrentBracket.Rounds.Any())
+            {
+                <button class="btn btn-outline-warning ms-2" @onclick="ResetBracket" title="Reset all match results to original bracket state">Reset Results</button>
+            }
+        </div>
+    </div>
+</div>
+
+@if (CurrentBracket.Rounds.Any())
+{
+    <div class="alert alert-info mb-3">
+        <strong>Bracket:</strong> @CurrentBracket.Game | 
+        <strong>Rounds:</strong> @CurrentBracket.Rounds.Count | 
+        <strong>Players:</strong> @Players.Count |
+        <strong>Status:</strong> @GetBracketStatus()
+    </div>
+}
+
+@if (GetBracketWinner() != null)
+{
+    <div class="alert alert-success mb-3">
+        <h4 class="alert-heading">🏆 Tournament Champion!</h4>
+        <p class="mb-0">Congratulations to <strong>@GetBracketWinner().Person?.FullName</strong> for winning the @CurrentBracket.Game tournament!</p>
+    </div>
+}
+
+<div class="d-flex flex-row gap-4">
+    <ul class="list-group">
+        @foreach (var player in Players)
+        {
+            <li class="list-group-item">@player.Person.FullName</li>
+        }
+    </ul>
+
+    <div class="bracket-container">
+        @if (CurrentBracket.Rounds.Any())
+        {
+            @foreach (var round in CurrentBracket.Rounds)
+            {
+                <div class="round @(round.RoundNumber == CurrentBracket.Rounds.Count ? "final" : "")">
+                    <h3>@GetRoundName(round)</h3>
+                    <div class="matches">
+                        @foreach (var match in round.Matches)
+                        {
+                            <div class="match @(match.Winner != null ? "completed" : "")">
+                                <div class="match-content">
+                                    <div class="player @(match.Winner == match.Player1 ? "winner" : "")">
+                                        <span class="seed-number">@(GetPlayerSeed(match.Player1))</span>
+                                        <button class="player-btn" @onclick="() => SetWinner(match, match.Player1)" disabled="@(match.Player1 == null || match.Winner != null)">
+                                            @(GetPlayerDisplayName(match.Player1))
+                                        </button>
+                                    </div>
+                                    <div class="player @(match.Winner == match.Player2 ? "winner" : "")">
+                                        <span class="seed-number">@(GetPlayerSeed(match.Player2))</span>
+                                        <button class="player-btn" @onclick="() => SetWinner(match, match.Player2)" disabled="@(match.Player2 == null || match.Winner != null)">
+                                            @(GetPlayerDisplayName(match.Player2))
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <p>No bracket available. Generate a tournament to display the bracket.</p>
+        }
+    </div>
+
+    @* Bronze Medal Match Display *@
+    @if (CurrentBracket.BronzeMedalMatch != null)
+    {
+        <div class="bronze-medal-section">
+            <h3 class="bronze-medal-title">🥉 Bronze Medal Match (3rd Place)</h3>
+            <div class="bronze-medal-match">
+                @if (CurrentBracket.BronzeMedalMatch.Player1 != null && CurrentBracket.BronzeMedalMatch.Player2 != null)
+                {
+                    <div class="match @(CurrentBracket.BronzeMedalMatch.Winner != null ? "completed" : "") bronze-match">
+                        <div class="match-content">
+                            <div class="player @(CurrentBracket.BronzeMedalMatch.Winner == CurrentBracket.BronzeMedalMatch.Player1 ? "winner" : "")">
+                                <span class="seed-number">@(GetPlayerSeed(CurrentBracket.BronzeMedalMatch.Player1))</span>
+                                <button class="player-btn" @onclick="() => SetWinner(CurrentBracket.BronzeMedalMatch, CurrentBracket.BronzeMedalMatch.Player1)" 
+                                        disabled="@(CurrentBracket.BronzeMedalMatch.Player1 == null || CurrentBracket.BronzeMedalMatch.Winner != null)">
+                                    @(GetPlayerDisplayName(CurrentBracket.BronzeMedalMatch.Player1))
+                                </button>
+                            </div>
+                            <div class="player @(CurrentBracket.BronzeMedalMatch.Winner == CurrentBracket.BronzeMedalMatch.Player2 ? "winner" : "")">
+                                <span class="seed-number">@(GetPlayerSeed(CurrentBracket.BronzeMedalMatch.Player2))</span>
+                                <button class="player-btn" @onclick="() => SetWinner(CurrentBracket.BronzeMedalMatch, CurrentBracket.BronzeMedalMatch.Player2)" 
+                                        disabled="@(CurrentBracket.BronzeMedalMatch.Player2 == null || CurrentBracket.BronzeMedalMatch.Winner != null)">
+                                    @(GetPlayerDisplayName(CurrentBracket.BronzeMedalMatch.Player2))
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="match bronze-match pending">
+                        <div class="match-content">
+                            <div class="text-center p-3">
+                                <em class="text-muted">Waiting for semi-final matches to complete...</em>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private Bracket CurrentBracket { get; set; } = new Bracket();
+    private string SelectedGame { get; set; } = "Mario Kart";
+    private List<Player> Players { get; set; } = new List<Player>
+        {
+            new Player { Person = new Person { FirstName = "Player 1" } },
+            new Player { Person = new Person { FirstName = "Player 2" } },
+            new Player { Person = new Person { FirstName = "Player 3" } },
+            new Player { Person = new Person { FirstName = "Player 4" } },
+            new Player { Person = new Person { FirstName = "Player 5" } },
+            new Player { Person = new Person { FirstName = "Player 6" } }
+            
+        };
+
+    protected override void OnInitialized()
+    {
+    }
+
+    private string GetBracketStatus()
+    {
+        if (!CurrentBracket.Rounds.Any())
+            return "No bracket generated";
+            
+        if (CurrentBracket.IsComplete())
+        {
+            var champion = CurrentBracket.GetChampion();
+            return $"Tournament Complete! Champion: {champion.Person?.FullName}";
+        }
+        
+        return $"In Progress: {CurrentBracket.GetCompletedMatches()}/{CurrentBracket.GetTotalMatches()} matches completed ({CurrentBracket.GetCompletionPercentage():F1}%)";
+    }
+
+    private Player GetBracketWinner()
+    {
+        return CurrentBracket.GetChampion();
+    }
+
+    private void ClearBracket()
+    {
+        CurrentBracket = new Bracket();
+    }
+
+    private void ResetBracket()
+    {
+        CurrentBracket.Reset();
+    }
+
+    private void GenerateBracket()
+    {
+        // Initialize a new bracket
+        CurrentBracket = new Bracket
+        {
+            Game = SelectedGame
+        };
+        
+        // Use the bracket's own method to generate the tournament structure
+        CurrentBracket.GenerateBracket(Players);
+    }
+
+    private void SetWinner(Match match, Player winner)
+    {
+        CurrentBracket.SetWinner(match, winner);
+    }
+
+    private string GetRoundName(Round round)
+    {
+        var totalRounds = CurrentBracket.Rounds.Count;
+        var roundNumber = round.RoundNumber;
+        
+        if (roundNumber == totalRounds)
+        {
+            return "Final";
+        }
+        else if (roundNumber == totalRounds - 1)
+        {
+            return "Semifinal";
+        }
+        else if (roundNumber == totalRounds - 2)
+        {
+            return "Quarterfinal";
+        }
+        else
+        {
+            return $"Round {roundNumber}";
+        }
+    }
+
+    private string GetPlayerDisplayName(Player player)
+    {
+        if (player == null) return "BYE";
+        return player.Person?.FullName ?? "Unknown Player";
+    }
+
+    private bool IsPlayerOnBye(Player player, Round round)
+    {
+        if (player == null || round.RoundNumber != 2) return false;
+        
+        // Check if this player was placed directly in round 2 (bypass round 1)
+        var round1 = CurrentBracket.Rounds.FirstOrDefault(r => r.RoundNumber == 1);
+        if (round1 == null) return false;
+        
+        // If player is in round 2 but wasn't in any round 1 match, they had a bye
+        var wasInRound1 = round1.Matches.Any(m => m.Player1 == player || m.Player2 == player);
+        return !wasInRound1;
+    }
+
+    private string GetPlayerSeed(Player player)
+    {
+        if (player == null) return "";
+        var index = Players.IndexOf(player);
+        return index >= 0 ? $"#{index + 1}" : "";
+    }
+}

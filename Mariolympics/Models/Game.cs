@@ -12,6 +12,8 @@ public class Game
     public static Game Baseball => new("Baseball");
     public static Game Kart => new("Kart");
 
+    public static List<Game> All => new() { Tennis, Golf, Strikers, Baseball, Kart };
+
     public override string ToString()
     {
         return Value;
