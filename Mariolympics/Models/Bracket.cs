@@ -44,8 +44,8 @@ public class Bracket
         round1.Matches = new List<Match>();
 
         // Create matches for players who need to play in round 1
-        // Lower seeded players (end of list) play first, higher seeded get byes
-        var playingPlayers = players.Take(players.Count - byeCount).ToList();
+        // Higher seeded players (later in list) play first, lower seeded players (earlier in list) get byes
+        var playingPlayers = players.Skip(byeCount).ToList();
 
         for (int i = 0; i < playingPlayers.Count; i += 2)
         {
@@ -84,7 +84,7 @@ public class Bracket
         if (rounds.Count > 1 && byeCount > 0)
         {
             var round2 = rounds[1];
-            var byePlayers = players.Skip(players.Count - byeCount).ToList(); // Highest seeded players
+            var byePlayers = players.Take(byeCount).ToList(); // Lower seeded players (lowest seed numbers)
 
             // Place bye players in the later matches of round 2
             for (int i = 0; i < byePlayers.Count; i++)
