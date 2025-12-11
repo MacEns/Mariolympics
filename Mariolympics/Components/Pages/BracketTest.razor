@@ -2,17 +2,9 @@
 
 @using Mariolympics.Models
 
-@* 
-Tournament Bracket with Proper Bye Distribution and Bronze Medal Match:
-- Uses the Bracket model to manage tournament structure
-- Players are seeded #1 (best) to #N (worst) based on their order in the Players list
-- Higher seeded players (higher numbers) play in Round 1
-- Lower seeded players (lower numbers) receive byes and enter in Round 2
-- This ensures the best players have the easiest path to the finals
-- Includes a bronze medal (third place) match between the losers of the semi-finals
-- Tracks tournament progress and displays champion and bronze medal winner when complete
-- Reset functionality restores bracket to original state (bye players in original positions)
-*@
+<PageTitle>Tournament Bracket Test</PageTitle>
+
+<h2>Tournament Bracket Generator</h2>
 
 <div class="row mb-3">
     <div class="col-md-4">
@@ -38,151 +30,27 @@ Tournament Bracket with Proper Bye Distribution and Bronze Medal Match:
     </div>
 </div>
 
-@if (CurrentBracket.Rounds.Any())
-{
-    <div class="alert alert-info mb-3">
-        <strong>Bracket:</strong> @CurrentBracket.Game | 
-        <strong>Rounds:</strong> @CurrentBracket.Rounds.Count | 
-        <strong>Players:</strong> @Players.Count |
-        <strong>Status:</strong> @GetBracketStatus()
-    </div>
-}
-
-@if (GetBracketWinner() != null)
-{
-    <div class="alert alert-success mb-3">
-        <h4 class="alert-heading">🏆 Tournament Champion!</h4>
-        <p class="mb-0">Congratulations to <strong>@GetBracketWinner().Person?.FullName</strong> for winning the @CurrentBracket.Game tournament!</p>
-    </div>
-}
-
-<div class="d-flex flex-row gap-4">
-    <ul class="list-group">
-        @foreach (var player in Players)
-        {
-            <li class="list-group-item">
-                <span class="badge bg-secondary me-2">@GetPlayerSeed(player)</span>
-                @player.Person.FullName
-            </li>
-        }
-    </ul>
-
-    <div class="bracket-container">
-        @if (CurrentBracket.Rounds.Any())
-        {
-            @foreach (var round in CurrentBracket.Rounds)
-            {
-                <div class="round @(round.RoundNumber == CurrentBracket.Rounds.Count ? "final" : "")">
-                    <h3>@GetRoundName(round)</h3>
-                    <div class="matches">
-                        @foreach (var match in round.Matches)
-                        {
-                            <div class="match @(match.Winner != null ? "completed" : "")">
-                                <div class="match-content">
-                                    <div class="player @(match.Winner == match.Player1 ? "winner" : "")">
-                                        <span class="seed-number">@(GetPlayerSeed(match.Player1))</span>
-                                        <button class="player-btn" @onclick="() => SetWinner(match, match.Player1)" disabled="@(match.Player1 == null || match.Winner != null)">
-                                            @(GetPlayerDisplayName(match.Player1))
-                                        </button>
-                                    </div>
-                                    <div class="player @(match.Winner == match.Player2 ? "winner" : "")">
-                                        <span class="seed-number">@(GetPlayerSeed(match.Player2))</span>
-                                        <button class="player-btn" @onclick="() => SetWinner(match, match.Player2)" disabled="@(match.Player2 == null || match.Winner != null)">
-                                            @(GetPlayerDisplayName(match.Player2))
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                </div>
-            }
-        }
-        else
-        {
-            <p>No bracket available. Generate a tournament to display the bracket.</p>
-        }
-    </div>
-
-    @* Bronze Medal Match Display *@
-    @if (CurrentBracket.BronzeMedalMatch != null)
-    {
-        <div class="bronze-medal-section">
-            <h3 class="bronze-medal-title">🥉 Bronze Medal Match (3rd Place)</h3>
-            <div class="bronze-medal-match">
-                @if (CurrentBracket.BronzeMedalMatch.Player1 != null && CurrentBracket.BronzeMedalMatch.Player2 != null)
-                {
-                    <div class="match @(CurrentBracket.BronzeMedalMatch.Winner != null ? "completed" : "") bronze-match">
-                        <div class="match-content">
-                            <div class="player @(CurrentBracket.BronzeMedalMatch.Winner == CurrentBracket.BronzeMedalMatch.Player1 ? "winner" : "")">
-                                <span class="seed-number">@(GetPlayerSeed(CurrentBracket.BronzeMedalMatch.Player1))</span>
-                                <button class="player-btn" @onclick="() => SetWinner(CurrentBracket.BronzeMedalMatch, CurrentBracket.BronzeMedalMatch.Player1)" 
-                                        disabled="@(CurrentBracket.BronzeMedalMatch.Player1 == null || CurrentBracket.BronzeMedalMatch.Winner != null)">
-                                    @(GetPlayerDisplayName(CurrentBracket.BronzeMedalMatch.Player1))
-                                </button>
-                            </div>
-                            <div class="player @(CurrentBracket.BronzeMedalMatch.Winner == CurrentBracket.BronzeMedalMatch.Player2 ? "winner" : "")">
-                                <span class="seed-number">@(GetPlayerSeed(CurrentBracket.BronzeMedalMatch.Player2))</span>
-                                <button class="player-btn" @onclick="() => SetWinner(CurrentBracket.BronzeMedalMatch, CurrentBracket.BronzeMedalMatch.Player2)" 
-                                        disabled="@(CurrentBracket.BronzeMedalMatch.Player2 == null || CurrentBracket.BronzeMedalMatch.Winner != null)">
-                                    @(GetPlayerDisplayName(CurrentBracket.BronzeMedalMatch.Player2))
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                }
-                else
-                {
-                    <div class="match bronze-match pending">
-                        <div class="match-content">
-                            <div class="text-center p-3">
-                                <em class="text-muted">Waiting for semi-final matches to complete...</em>
-                            </div>
-                        </div>
-                    </div>
-                }
-            </div>
-        </div>
-    }
-</div>
+<TournamentBracket 
+    Bracket="@CurrentBracket" 
+    Players="@Players" 
+    ShowPlayerList="true"
+    AllowSwap="true"
+    OnWinnerSelected="@HandleWinnerSelected"
+    OnPlayersSwapped="@HandlePlayersSwapped" />
 
 @code {
     private Bracket CurrentBracket { get; set; } = new Bracket();
     private string SelectedGame { get; set; } = "Mario Kart";
     private List<Player> Players { get; set; } = new List<Player>
-        {
-            new Player { Person = new Person { FirstName = "Mac", LastName = "Ens" } },
-            new Player { Person = new Person { FirstName = "Riley", LastName = "Fehr" } },
-            new Player { Person = new Person { FirstName = "Ian", LastName = "Lane" } },
-            new Player { Person = new Person { FirstName = "Luc", LastName = "Ens" } },
-            new Player { Person = new Person { FirstName = "Josh", LastName = "Froese" } },
-            new Player { Person = new Person { FirstName = "Reece", LastName = "Main" } },
-            new Player { Person = new Person { FirstName = "Brett", LastName = "Janzen" } }
-
-        };
-
-    protected override void OnInitialized()
     {
-    }
-
-    private string GetBracketStatus()
-    {
-        if (!CurrentBracket.Rounds.Any())
-            return "No bracket generated";
-            
-        if (CurrentBracket.IsComplete())
-        {
-            var champion = CurrentBracket.GetChampion();
-            return $"Tournament Complete! Champion: {champion.Person?.FullName}";
-        }
-        
-        return $"In Progress: {CurrentBracket.GetCompletedMatches()}/{CurrentBracket.GetTotalMatches()} matches completed ({CurrentBracket.GetCompletionPercentage():F1}%)";
-    }
-
-    private Player GetBracketWinner()
-    {
-        return CurrentBracket.GetChampion();
-    }
+        new Player { Person = new Person { FirstName = "Mac", LastName = "Ens" } },
+        new Player { Person = new Person { FirstName = "Riley", LastName = "Fehr" } },
+        new Player { Person = new Person { FirstName = "Ian", LastName = "Lane" } },
+        new Player { Person = new Person { FirstName = "Luc", LastName = "Ens" } },
+        new Player { Person = new Person { FirstName = "Josh", LastName = "Froese" } },
+        new Player { Person = new Person { FirstName = "Reece", LastName = "Main" } },
+        new Player { Person = new Person { FirstName = "Brett", LastName = "Janzen" } }
+    };
 
     private void ClearBracket()
     {
@@ -196,67 +64,25 @@ Tournament Bracket with Proper Bye Distribution and Bronze Medal Match:
 
     private void GenerateBracket()
     {
-        // Initialize a new bracket
         CurrentBracket = new Bracket
         {
             Game = SelectedGame
         };
         
-        // Use the bracket's own method to generate the tournament structure
         CurrentBracket.GenerateBracket(Players);
     }
 
-    private void SetWinner(Match match, Player winner)
+    private void HandleWinnerSelected((Match match, Player winner) data)
     {
-        CurrentBracket.SetWinner(match, winner);
+        // Optional: Add any additional logic when a winner is selected
+        // For example, logging, notifications, or saving to database
+        StateHasChanged();
     }
 
-    private string GetRoundName(Round round)
+    private void HandlePlayersSwapped(Match match)
     {
-        var totalRounds = CurrentBracket.Rounds.Count;
-        var roundNumber = round.RoundNumber;
-        
-        if (roundNumber == totalRounds)
-        {
-            return "Final";
-        }
-        else if (roundNumber == totalRounds - 1)
-        {
-            return "Semifinal";
-        }
-        else if (roundNumber == totalRounds - 2)
-        {
-            return "Quarterfinal";
-        }
-        else
-        {
-            return $"Round {roundNumber}";
-        }
-    }
-
-    private string GetPlayerDisplayName(Player player)
-    {
-        if (player == null) return "BYE";
-        return player.Person?.FullName ?? "Unknown Player";
-    }
-
-    private bool IsPlayerOnBye(Player player, Round round)
-    {
-        if (player == null || round.RoundNumber != 2) return false;
-        
-        // Check if this player was placed directly in round 2 (bypass round 1)
-        var round1 = CurrentBracket.Rounds.FirstOrDefault(r => r.RoundNumber == 1);
-        if (round1 == null) return false;
-        
-        // If player is in round 2 but wasn't in any round 1 match, they had a bye
-        var wasInRound1 = round1.Matches.Any(m => m.Player1 == player || m.Player2 == player);
-        return !wasInRound1;
-    }
-
-    private string GetPlayerSeed(Player player)
-    {
-        if (player == null) return "";
-        var index = Players.IndexOf(player);
-        return index >= 0 ? $"#{index + 1}" : "";
+        // Optional: Add any additional logic when players are swapped
+        // For example, logging or tracking changes
+        StateHasChanged();
     }
 }
