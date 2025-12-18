@@ -11,6 +11,13 @@
         </div>
     }
 
+    @if (AllowSwap && Bracket != null && Bracket.Rounds.Any() && Bracket.Rounds.First().Matches.Any(m => m.Winner == null))
+    {
+        <div class="alert alert-warning mb-3">
+            <strong>Swap Mode:</strong> Click on any player in Round 1 or bye players in Round 2 to select them, then click on another player to swap their positions.
+        </div>
+    }
+
     @if (GetBracketWinner() != null)
     {
         <div class="alert alert-success mb-3">
@@ -28,7 +35,7 @@
     }
 
     <div class="d-flex flex-row gap-4">
-        @if (ShowPlayerList && Players != null && Players.Any())
+        @if (ShowPlayerList && Players != null && Players.Any() && Bracket == null)
         {
             <ul class="list-group">
                 @foreach (var player in Players)
@@ -42,19 +49,6 @@
         }
 
         <div class="bracket-container">
-            @if (AllowSwap && Bracket != null && Bracket.Rounds.Any() && Bracket.Rounds.First().Matches.Any(m => m.Winner == null))
-            {
-                <div class="alert alert-warning mb-3">
-                    <strong>💡 Swap Mode:</strong> Click on any player in Round 1 or bye players in Round 2 to select them, then click on another player to swap their positions.
-                    @if (selectedPlayer != null)
-                    {
-                        <span class="ms-2">
-                            <span class="badge bg-warning text-dark">Selected: @GetPlayerDisplayName(selectedPlayer.Value.player)</span>
-                            <small class="ms-2 text-muted">(Click another player to swap or click again to cancel)</small>
-                        </span>
-                    }
-                </div>
-            }
             
             @if (Bracket != null && Bracket.Rounds.Any())
             {
@@ -73,7 +67,7 @@
                                             <button class="player-btn" @onclick="() => HandleSetWinner(match, match.Player1)" 
                                                     @onclick:stopPropagation="true"
                                                     disabled="@(match.Player1 == null || match.Winner != null || ReadOnly)">
-                                                @(GetPlayerDisplayName(match.Player1))
+                                                @(GetPlayerDisplayName(match.Player1, round))
                                             </button>
                                         </div>
                                         <div class="player @(match.Winner == match.Player2 ? "winner" : "") @(IsPlayerSelected(match, match.Player2) ? "selected" : "") @(CanSwapPlayer(round, match, match.Player2) ? "swappable" : "")"
@@ -82,7 +76,7 @@
                                             <button class="player-btn" @onclick="() => HandleSetWinner(match, match.Player2)" 
                                                     @onclick:stopPropagation="true"
                                                     disabled="@(match.Player2 == null || match.Winner != null || ReadOnly)">
-                                                @(GetPlayerDisplayName(match.Player2))
+                                                @(GetPlayerDisplayName(match.Player2, round))
                                             </button>
                                         </div>
                                     </div>
@@ -112,14 +106,14 @@
                                     <span class="seed-number">@(GetPlayerSeed(Bracket.BronzeMedalMatch.Player1))</span>
                                     <button class="player-btn" @onclick="() => HandleSetWinner(Bracket.BronzeMedalMatch, Bracket.BronzeMedalMatch.Player1)" 
                                             disabled="@(Bracket.BronzeMedalMatch.Player1 == null || Bracket.BronzeMedalMatch.Winner != null || ReadOnly)">
-                                        @(GetPlayerDisplayName(Bracket.BronzeMedalMatch.Player1))
+                                        @(GetPlayerDisplayName(Bracket.BronzeMedalMatch.Player1, null))
                                     </button>
                                 </div>
                                 <div class="player @(Bracket.BronzeMedalMatch.Winner == Bracket.BronzeMedalMatch.Player2 ? "winner" : "")">
                                     <span class="seed-number">@(GetPlayerSeed(Bracket.BronzeMedalMatch.Player2))</span>
                                     <button class="player-btn" @onclick="() => HandleSetWinner(Bracket.BronzeMedalMatch, Bracket.BronzeMedalMatch.Player2)" 
                                             disabled="@(Bracket.BronzeMedalMatch.Player2 == null || Bracket.BronzeMedalMatch.Winner != null || ReadOnly)">
-                                        @(GetPlayerDisplayName(Bracket.BronzeMedalMatch.Player2))
+                                        @(GetPlayerDisplayName(Bracket.BronzeMedalMatch.Player2, null))
                                     </button>
                                 </div>
                             </div>
@@ -173,6 +167,12 @@
     {
         if (!ReadOnly && winner != null)
         {
+            // If this player is currently selected for swapping, clear the selection
+            if (selectedPlayer.HasValue && selectedPlayer.Value.player == winner)
+            {
+                selectedPlayer = null;
+            }
+            
             Bracket.SetWinner(match, winner);
             await OnWinnerSelected.InvokeAsync((match, winner));
         }
@@ -325,9 +325,20 @@
         }
     }
 
-    private string GetPlayerDisplayName(Player player)
+    private string GetPlayerDisplayName(Player player, Round round = null)
     {
-        if (player == null) return "BYE";
+        if (player == null)
+        {
+            // Only show "BYE" for actual bye players in Round 1 or Round 2
+            // Round 2 bye players are those who were in Round 1 but their opponent was null
+            if (round != null && round.RoundNumber <= 2)
+            {
+                return "BYE";
+            }
+            // For later rounds, empty slots are waiting for winners, not byes
+            return "TBD";
+        }
+        
         return player.Person?.FullName ?? "Unknown Player";
     }
 

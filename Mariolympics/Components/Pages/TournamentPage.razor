@@ -1,5 +1,6 @@
-@page "/tournament"
+@page "/tournament/{TournamentId?}"
 @inject PersonRepository PersonRepository
+@inject TournamentRepository TournamentRepository
 
 <PageTitle>Mariolympics</PageTitle>
 
@@ -7,154 +8,344 @@
     <h1>Tournament</h1>
 
     <div class="btn-toolbar mb-2 mb-md-0">
-        <button class="btn btn-sm btn-outline-primary" @onclick="GenerateTournament">Generate Tournament</button>
+        @if (!IsSelectingPlayers && !IsSelectingCharacters && Tournament == null)
+        {
+            <button class="btn btn-sm btn-outline-primary" @onclick="StartPlayerSelection">
+                Select Players
+            </button>
+        }
+        else if (IsSelectingPlayers)
+        {
+            <button class="btn btn-sm btn-outline-success" @onclick="StartCharacterSelection" disabled="@(SelectedPersons.Count < 2)">
+                Continue to Character Selection (@SelectedPersons.Count selected)
+            </button>
+        }
+        else if (Tournament != null)
+        {
+            <button class="btn btn-sm btn-success" @onclick="SaveTournament" disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                    <span>Saving...</span>
+                }
+                else
+                {
+                    <span>💾 Save Tournament</span>
+                }
+            </button>
+            @if (!string.IsNullOrWhiteSpace(saveMessage))
+            {
+                <span class="ms-2 @(saveSuccess ? "text-success" : "text-danger")">@saveMessage</span>
+            }
+        }
     </div>
-
-    <!--
-        Randomize order of persons for draft
-        Select character for each person
-        Randomize order of players for each game
-        Generate tournament brackets
-    -->
 </div>
 
-<TournamentBracket Bracket="Tournament?.Brackets.FirstOrDefault()" />
+@if (IsSelectingPlayers)
+{
+    <PlayerSelection AllPersons="Persons" SelectedPersons="SelectedPersons" OnSelectionChanged="HandleSelectionChanged" OnPersonAdded="HandlePersonAdded" />
+}
+
+@if (IsSelectingCharacters)
+{
+    <div class="character-selection-container">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h3>Character Selection</h3>
+                <p class="mb-0">@CurrentSelectionPerson?.FullName, choose your character!</p>
+            </div>
+            <div class="card-body">
+                <div class="character-grid">
+                    @foreach (var character in AvailableCharacters)
+                    {
+                        <button class="btn btn-outline-primary character-card" @onclick="() => SelectCharacter(character)">
+                            <img src="@GetCharacterImagePath(character)" alt="@character.Value" class="character-image" />
+                            <div class="character-name">@character.Value</div>
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+        
+        @if (SelectedPlayers.Any())
+        {
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h4>Selected Characters</h4>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group">
+                        @foreach (var player in SelectedPlayers)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <div class="d-flex align-items-center">
+                                    <img src="@GetCharacterImagePathByName(player.CharacterName)" alt="@player.CharacterName" class="selected-character-image me-2" />
+                                    <span>@player.Person.FullName</span>
+                                </div>
+                                <span class="badge bg-primary rounded-pill">@player.CharacterName</span>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (Tournament?.Brackets != null && Tournament.Brackets.Any())
+{
+    <div class="brackets-container mt-4">
+        <ul class="nav nav-tabs" role="tablist">
+            @foreach (var bracket in Tournament.Brackets)
+            {
+                var isActive = Tournament.Brackets.IndexOf(bracket) == 0;
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link @(isActive ? "active" : "")" 
+                            id="@($"tab-{bracket.Game}")" 
+                            data-bs-toggle="tab" 
+                            data-bs-target="@($"#bracket-{bracket.Game}")" 
+                            type="button" 
+                            role="tab">
+                        @bracket.Game
+                    </button>
+                </li>
+            }
+        </ul>
+        
+        <div class="tab-content mt-3">
+            @foreach (var bracket in Tournament.Brackets)
+            {
+                var isActive = Tournament.Brackets.IndexOf(bracket) == 0;
+                <div class="tab-pane fade @(isActive ? "show active" : "")" 
+                     id="@($"bracket-{bracket.Game}")" 
+                     role="tabpanel">
+                    <TournamentBracket Bracket="bracket" />
+                </div>
+            }
+        </div>
+    </div>
+}
 
 @code {
+    [Parameter]
+    public string TournamentId { get; set; }
     private List<Tournament> Tournaments { get; set; }
     private List<Person> Persons { get; set; }
 
     private Tournament Tournament { get; set; }
     private List<Player> Players { get; set; } = [];
+    
+    // Player selection state
+    private bool IsSelectingPlayers { get; set; }
+    private List<Person> SelectedPersons { get; set; } = [];
+    
+    // Character selection state
+    private bool IsSelectingCharacters { get; set; }
+    private List<Person> SelectionOrder { get; set; } = [];
+    private int CurrentSelectionIndex { get; set; }
+    private Person CurrentSelectionPerson => SelectionOrder.ElementAtOrDefault(CurrentSelectionIndex);
+    private List<Character> AvailableCharacters { get; set; } = [];
+    private List<Player> SelectedPlayers { get; set; } = [];
+    
+    // Save tournament state
+    private bool isSaving = false;
+    private string saveMessage = "";
+    private bool saveSuccess = false;
+
+    private bool debugPrint = false;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             Persons = await PersonRepository.GetPersonsAsync();
+            
+            // Load tournament if ID is provided in URL
+            if (int.TryParse(TournamentId, out int tournamentId) && tournamentId > 0)
+            {
+                await LoadTournament(tournamentId);
+            }
         }
 
         await base.OnAfterRenderAsync(firstRender);
     }
+    
+    private async Task LoadTournament(int id)
+    {
+        try
+        {
+            Tournament = await TournamentRepository.GetTournamentByIdAsync(id);
+            
+            if (Tournament != null)
+            {
+                // Set up round references for all matches
+                foreach (var bracket in Tournament.Brackets)
+                {
+                    foreach (var round in bracket.Rounds)
+                    {
+                        foreach (var match in round.Matches)
+                        {
+                            match.Round = round;
+                        }
+                    }
+                    
+                    // Set up bronze medal match reference if it exists
+                    if (bracket.BronzeMedalMatch != null)
+                    {
+                        // Bronze medal match doesn't have a round in the normal rounds list
+                        // but we can create a temporary round reference for it
+                        bracket.BronzeMedalMatch.Round = new Round { RoundNumber = bracket.Rounds.Count + 1 };
+                    }
+                }
+                
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading tournament: {ex.Message}");
+        }
+    }
+    
+    private void StartPlayerSelection()
+    {
+        IsSelectingPlayers = true;
+        SelectedPersons.Clear();
+        StateHasChanged();
+    }
+    
+    private Task HandleSelectionChanged(List<Person> selectedPersons)
+    {
+        SelectedPersons = selectedPersons;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+    
+    private async Task HandlePersonAdded()
+    {
+        // Reload persons from database to get the updated list with IDs
+        Persons = await PersonRepository.GetPersonsAsync();
+        StateHasChanged();
+    }
+    
+    private void StartCharacterSelection()
+    {
+        if (SelectedPersons == null || SelectedPersons.Count < 2)
+        {
+            return;
+        }
+        
+        // Move to character selection phase
+        IsSelectingPlayers = false;
+        IsSelectingCharacters = true;
+        SelectedPlayers.Clear();
+        CurrentSelectionIndex = 0;
+        
+        // Randomize the selection order using the selected persons
+        var random = new Random();
+        SelectionOrder = SelectedPersons.OrderBy(x => random.Next()).ToList();
+        
+        // Reset available characters
+        AvailableCharacters = new List<Character>(Character.All);
+        
+        StateHasChanged();
+    }
+    
+    private void SelectCharacter(Character character)
+    {
+        if (CurrentSelectionPerson == null || character == null)
+        {
+            return;
+        }
+        
+        // Create player with selected character
+        var player = new Player
+        {
+            Person = CurrentSelectionPerson,
+            CharacterName = character.Value
+        };
+        
+        SelectedPlayers.Add(player);
+        AvailableCharacters.Remove(character);
+        CurrentSelectionIndex++;
+        
+        // Check if selection is complete
+        if (CurrentSelectionIndex >= SelectionOrder.Count)
+        {
+            IsSelectingCharacters = false;
+            GenerateTournament();
+        }
+        
+        StateHasChanged();
+    }
 
     private void GenerateTournament()
     {
-        var players = Persons
-            .Select(x => new Player { Person = x, CharacterName = Character.All[Persons.IndexOf(x)].ToString() })
-            .ToList();
-        var bracket = GenerateBracket(players);
+        // Use the players from character selection
+        var players = SelectedPlayers.ToList();
+        
+        // Generate tournament using the Tournament model
+        Tournament = Tournament.Generate(players);
 
-        Console.WriteLine("Tournament Bracket:");
-        foreach (var round in bracket.Rounds)
+        if (debugPrint)
         {
-            Console.WriteLine($"Round {bracket.Rounds.ToList().IndexOf(round)}:");
-            foreach (var match in round.Matches)
+            Console.WriteLine("Tournament Brackets Generated:");
+            foreach (var bracket in Tournament.Brackets)
             {
-                Console.WriteLine($"  {match.Player1?.Person.FullName} vs {match.Player2?.Person.FullName}");
-            }
-        }
-
-        Tournament = new();
-        Tournament.Brackets.Add(bracket);
-    }
-
-    private static Bracket GenerateBracket(List<Player> players)
-    {
-        var totalPlayers = players.Count;
-        var nextPowerOfTwo = 1;
-        while (nextPowerOfTwo < totalPlayers)
-        {
-            nextPowerOfTwo *= 2;
-        }
-
-        var byes = nextPowerOfTwo - totalPlayers;
-        List<Player> firstRound = new List<Player>(players);
-
-        // Add byes as null
-        for (int i = 0; i < byes; i++)
-        {
-            firstRound.Add(null);
-        }
-
-        // Shuffle players (optional)
-        Random rng = new Random();
-        for (int i = firstRound.Count - 1; i > 0; i--)
-        {
-            int swapIndex = rng.Next(i + 1);
-            (firstRound[i], firstRound[swapIndex]) = (firstRound[swapIndex], firstRound[i]);
-        }
-
-        // Create the bracket
-        var bracket = new Bracket
-        {
-            Game = "Tournament Game",
-            Rounds = new List<Round>()
-        };
-
-        int roundNumber = 1;
-        List<(Player, Player)> matches = new List<(Player, Player)>();
-
-        for (int i = 0; i < firstRound.Count; i += 2)
-        {
-            matches.Add((firstRound[i], firstRound[i + 1]));
-        }
-
-        bracket.Rounds.Add(new Round
-        {
-            RoundNumber = roundNumber,
-            Matches = matches.Select(m => new Match
-            {
-                Player1 = m.Item1,
-                Player2 = m.Item2
-            }).ToList()
-        });
-
-        // Generate subsequent rounds
-        while (matches.Count > 1)
-        {
-            roundNumber++;
-            List<(Player, Player)> nextRound = new List<(Player, Player)>();
-            for (int i = 0; i < matches.Count; i += 2)
-            {
-                nextRound.Add((null, null)); // Placeholder for winners
-            }
-
-            matches = nextRound;
-            bracket.Rounds.Add(new Round
-            {
-                RoundNumber = roundNumber,
-                Matches = matches.Select(m => new Match
+                Console.WriteLine($"\n{bracket.Game}:");
+                foreach (var round in bracket.Rounds)
                 {
-                    Player1 = m.Item1,
-                    Player2 = m.Item2,
-                }).ToList()
-            });
-        }
-
-        // Add third-place game
-        if (roundNumber > 1)
-        {
-            var semifinalLosers = new List<Player>
-            {
-                null, // Placeholder for the first semifinal loser
-                null  // Placeholder for the second semifinal loser
-            };
-
-            roundNumber++;
-            bracket.Rounds.Add(new Round
-            {
-                RoundNumber = roundNumber,
-                Matches = new List<Match>
-                {
-                    new Match
+                    Console.WriteLine($"  Round {bracket.Rounds.ToList().IndexOf(round)}:");
+                    foreach (var match in round.Matches)
                     {
-                        Player1 = semifinalLosers[0],
-                        Player2 = semifinalLosers[1],
+                        Console.WriteLine($"    {match.Player1?.Person.FullName} vs {match.Player2?.Person.FullName}");
                     }
                 }
-            });
+            }
         }
-
-        return bracket;
+        
+        StateHasChanged();
     }
+    private string GetCharacterImagePath(Character character) => $"/images/{character.Value.ToLower()}.png";
+    private string GetCharacterImagePathByName(string characterName) => $"/images/{characterName.ToLower()}.png";
+    
+    private async Task SaveTournament()
+    {
+        try
+        {
+            isSaving = true;
+            saveMessage = "";
+            StateHasChanged();
+            
+            if (Tournament.Id == 0)
+            {
+                // New tournament - add to database
+                await TournamentRepository.AddTournamentAsync(Tournament);
+                saveMessage = "Tournament saved successfully!";
+            }
+            else
+            {
+                // Existing tournament - update
+                await TournamentRepository.UpdateTournamentAsync(Tournament);
+                saveMessage = "Tournament updated successfully!";
+            }
+            
+            saveSuccess = true;
+            
+            // Clear message after a delay
+            await Task.Delay(3000);
+            saveMessage = "";
+        }
+        catch (Exception ex)
+        {
+            saveMessage = $"Error saving tournament: {ex.Message}";
+            saveSuccess = false;
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
 }

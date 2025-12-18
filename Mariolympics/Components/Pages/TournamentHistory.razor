@@ -1,0 +1,224 @@
+@page "/tournament-history"
+@inject TournamentRepository TournamentRepository
+@inject NavigationManager NavigationManager
+
+<PageTitle>Tournament History - Mariolympics</PageTitle>
+
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1>Tournament History</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button class="btn btn-sm btn-outline-primary" @onclick="@(() => NavigationManager.NavigateTo("/tournament"))">
+            + New Tournament
+        </button>
+    </div>
+</div>
+
+@if (isLoading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-3">Loading tournaments...</p>
+    </div>
+}
+else if (tournaments == null || !tournaments.Any())
+{
+    <div class="alert alert-info">
+        <h4 class="alert-heading">No Tournaments Found</h4>
+        <p>You haven't saved any tournaments yet. Create a new tournament to get started!</p>
+        <hr>
+        <button class="btn btn-primary" @onclick="@(() => NavigationManager.NavigateTo("/tournament"))">
+            Create First Tournament
+        </button>
+    </div>
+}
+else
+{
+    <div class="tournament-grid">
+        @foreach (var tournament in tournaments.OrderByDescending(t => t.Date))
+        {
+            <div class="card tournament-card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">@tournament.Date.ToString("MMMM dd, yyyy")</h5>
+                        <span class="badge bg-primary rounded-pill">@tournament.Brackets.Count games</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="tournament-summary">
+                        <div class="summary-item">
+                            <strong>Players:</strong>
+                            <span>@GetPlayerCount(tournament)</span>
+                        </div>
+                        <div class="summary-item">
+                            <strong>Games:</strong>
+                            <div class="game-badges">
+                                @foreach (var bracket in tournament.Brackets)
+                                {
+                                    <span class="badge bg-secondary me-1">@bracket.Game</span>
+                                }
+                            </div>
+                        </div>
+                        @if (GetWinners(tournament).Any())
+                        {
+                            <div class="summary-item">
+                                <strong>Champions:</strong>
+                                <ul class="winner-list">
+                                    @foreach (var winner in GetWinners(tournament))
+                                    {
+                                        <li>
+                                            <span class="trophy">🏆</span>
+                                            <strong>@winner.Game:</strong> @winner.Winner
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                        <div class="summary-item">
+                            <strong>Progress:</strong>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar @GetProgressColor(tournament)" 
+                                     role="progressbar" 
+                                     style="width: @GetCompletionPercentage(tournament)%"
+                                     aria-valuenow="@GetCompletionPercentage(tournament)" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    @GetCompletionPercentage(tournament)% Complete
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-sm btn-primary" @onclick="@(() => ViewTournament(tournament))">
+                        View Details
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="@(() => DeleteTournament(tournament))">
+                        Delete
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<Tournament> tournaments;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTournaments();
+    }
+
+    private async Task LoadTournaments()
+    {
+        isLoading = true;
+        tournaments = await TournamentRepository.GetTournamentsAsync();
+        isLoading = false;
+    }
+
+    private int GetPlayerCount(Tournament tournament)
+    {
+        if (tournament.Brackets == null || !tournament.Brackets.Any())
+            return 0;
+
+        var firstBracket = tournament.Brackets.First();
+        if (firstBracket.Rounds == null || !firstBracket.Rounds.Any())
+            return 0;
+
+        var firstRound = firstBracket.Rounds.First();
+        var players = new HashSet<string>();
+        
+        foreach (var match in firstRound.Matches)
+        {
+            if (match.Player1 != null)
+                players.Add(match.Player1.Person?.FullName ?? "");
+            if (match.Player2 != null)
+                players.Add(match.Player2.Person?.FullName ?? "");
+        }
+
+        return players.Count;
+    }
+
+    private List<(string Game, string Winner)> GetWinners(Tournament tournament)
+    {
+        var winners = new List<(string Game, string Winner)>();
+        
+        foreach (var bracket in tournament.Brackets)
+        {
+            if (bracket.Rounds == null || !bracket.Rounds.Any())
+                continue;
+
+            // Find the final round (excluding bronze medal match)
+            var finalRound = bracket.Rounds
+                .Where(r => r.Matches.Count == 1)
+                .OrderBy(r => r.RoundNumber)
+                .FirstOrDefault();
+
+            if (finalRound?.Matches.FirstOrDefault()?.Winner != null)
+            {
+                var winner = finalRound.Matches.First().Winner;
+                winners.Add((bracket.Game, winner.Person?.FullName ?? "Unknown"));
+            }
+        }
+
+        return winners;
+    }
+
+    private int GetCompletionPercentage(Tournament tournament)
+    {
+        if (tournament.Brackets == null || !tournament.Brackets.Any())
+            return 0;
+
+        int totalMatches = 0;
+        int completedMatches = 0;
+
+        foreach (var bracket in tournament.Brackets)
+        {
+            if (bracket.Rounds == null)
+                continue;
+
+            foreach (var round in bracket.Rounds)
+            {
+                foreach (var match in round.Matches)
+                {
+                    // Only count matches that have both players
+                    if (match.Player1 != null || match.Player2 != null)
+                    {
+                        totalMatches++;
+                        if (match.Winner != null)
+                            completedMatches++;
+                    }
+                }
+            }
+        }
+
+        return totalMatches > 0 ? (int)((completedMatches / (double)totalMatches) * 100) : 0;
+    }
+
+    private string GetProgressColor(Tournament tournament)
+    {
+        var percentage = GetCompletionPercentage(tournament);
+        if (percentage == 100) return "bg-success";
+        if (percentage >= 50) return "bg-warning";
+        return "bg-info";
+    }
+
+    private void ViewTournament(Tournament tournament)
+    {
+        // TODO: Navigate to tournament detail view
+        NavigationManager.NavigateTo($"/tournament/{tournament.Id}");
+    }
+
+    private async Task DeleteTournament(Tournament tournament)
+    {
+        if (tournament == null)
+            return;
+
+        // TODO: Add confirmation dialog
+        await TournamentRepository.RemoveTournamentAsync(tournament);
+        await LoadTournaments();
+    }
+}
