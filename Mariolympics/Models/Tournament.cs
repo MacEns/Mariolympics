@@ -121,36 +121,31 @@ public class Tournament
             bracket.Rounds.Add(round);
         }
 
-        // Add third-place game
-        if (roundNumber > 1)
+        // Add bronze medal match (stored separately, not as a round)
+        // Only create bronze medal match if there are semi-finals (4+ players)
+        // Semi-finals exist when the second-to-last round has 2 or more matches
+        if (bracket.Rounds.Count >= 2)
         {
-            var semifinalLosers = new List<Player>
+            var semiFinalRound = bracket.Rounds[bracket.Rounds.Count - 2];
+            if (semiFinalRound.Matches.Count >= 2)
             {
-                null, // Placeholder for the first semifinal loser
-                null  // Placeholder for the second semifinal loser
-            };
-
-            roundNumber++;
-            var bronzeRound = new Round
-            {
-                RoundNumber = roundNumber,
-                Matches = new List<Match>
+                bracket.HasBronzeMedalMatch = true;
+                bracket.BronzeMedalMatch = new Match
                 {
-                    new Match
-                    {
-                        Player1 = semifinalLosers[0],
-                        Player2 = semifinalLosers[1],
-                    }
-                }
-            };
-
-            // Set Round property on bronze medal match
-            foreach (var match in bronzeRound.Matches)
-            {
-                match.Round = bronzeRound;
+                    Player1 = null, // Will be filled with semi-final losers
+                    Player2 = null
+                };
             }
-
-            bracket.Rounds.Add(bronzeRound);
+            else
+            {
+                bracket.HasBronzeMedalMatch = false;
+                bracket.BronzeMedalMatch = null;
+            }
+        }
+        else
+        {
+            bracket.HasBronzeMedalMatch = false;
+            bracket.BronzeMedalMatch = null;
         }
 
         // Automatically advance players with byes to the next round
@@ -211,5 +206,96 @@ public class Tournament
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Standard point values for finishing positions
+    /// </summary>
+    public static Dictionary<int, int> GetStandardPointValues()
+    {
+        return new Dictionary<int, int>
+        {
+            { 1, 15 },  // 1st place
+            { 2, 12 },  // 2nd place
+            { 3, 10 },  // 3rd place
+            { 4, 8 },   // 4th place
+            { 5, 6 },   // 5th-6th place
+            { 6, 6 },
+            { 7, 4 },   // 7th-8th place
+            { 8, 4 },
+            { 9, 2 },   // 9th+ place
+        };
+    }
+
+    /// <summary>
+    /// Calculates and returns bracket scores for all players
+    /// </summary>
+    public List<BracketScore> CalculateBracketScores(Bracket bracket)
+    {
+        var scores = new List<BracketScore>();
+        var placements = bracket.GetPlayerPlacements();
+        var pointValues = GetStandardPointValues();
+
+        foreach (var placement in placements)
+        {
+            var player = placement.Key;
+            var place = placement.Value;
+
+            // Get points for this placement, default to 2 points for placements beyond defined values
+            var points = pointValues.ContainsKey(place) ? pointValues[place] : 2;
+
+            scores.Add(new BracketScore
+            {
+                Player = player,
+                Place = place,
+                Points = points
+            });
+        }
+
+        return scores;
+    }
+
+    /// <summary>
+    /// Calculates total scores across all brackets and updates player scores
+    /// </summary>
+    public Dictionary<Player, int> CalculateTotalScores()
+    {
+        var totalScores = new Dictionary<Player, int>();
+
+        foreach (var bracket in Brackets)
+        {
+            var bracketScores = CalculateBracketScores(bracket);
+
+            foreach (var score in bracketScores)
+            {
+                if (!totalScores.ContainsKey(score.Player))
+                {
+                    totalScores[score.Player] = 0;
+                }
+                totalScores[score.Player] += score.Points;
+            }
+        }
+
+        // Update player scores
+        foreach (var playerScore in totalScores)
+        {
+            playerScore.Key.Score = playerScore.Value;
+        }
+
+        return totalScores;
+    }
+
+    /// <summary>
+    /// Gets the leaderboard ordered by total score descending
+    /// </summary>
+    public List<(Player Player, int TotalScore)> GetLeaderboard()
+    {
+        var totalScores = CalculateTotalScores();
+
+        return totalScores
+            .OrderByDescending(kvp => kvp.Value)
+            .ThenBy(kvp => kvp.Key.Person.FullName)
+            .Select(kvp => (kvp.Key, kvp.Value))
+            .ToList();
     }
 }

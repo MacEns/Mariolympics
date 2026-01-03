@@ -10,23 +10,130 @@
     padding: 1rem;
 }
 
+.character-grid-3x3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    padding: 2rem;
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.character-card-wrapper {
+    aspect-ratio: 1;
+    position: relative;
+}
+
+.character-card-wrapper.empty {
+    visibility: hidden;
+}
+
 .character-card {
-    padding: 1.5rem 1rem;
-    height: 180px;
+    width: 100%;
+    height: 100%;
+    padding: 1rem;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    border: 2px solid #0d6efd;
-    border-radius: 8px;
+    border: 3px solid #0d6efd;
+    border-radius: 12px;
     transition: all 0.3s ease;
     background-color: white;
+    position: relative;
 }
 
-.character-card:hover {
+.character-card.available {
+    border-color: #0d6efd;
+    cursor: pointer;
+}
+
+.character-card.available:hover:not(:disabled) {
     transform: translateY(-5px);
-    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+    box-shadow: 0 6px 16px rgba(13, 110, 253, 0.4);
     background-color: #e7f1ff;
+}
+
+.character-card.available.selected {
+    border-color: #198754;
+    border-width: 4px;
+    background-color: #d1e7dd;
+    box-shadow: 0 0 20px rgba(25, 135, 84, 0.5);
+    transform: scale(1.05);
+}
+
+.character-card.unavailable {
+    border-color: #6c757d;
+    background-color: #e9ecef;
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.character-card.unavailable .character-image {
+    filter: grayscale(100%);
+}
+
+.character-card.unavailable .character-name {
+    color: #6c757d;
+}
+
+.center-confirm {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.confirm-character-btn {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid #198754;
+    border-radius: 12px;
+    background-color: #198754;
+    transition: all 0.3s ease;
+    padding: 1rem;
+}
+
+.confirm-character-btn:hover:not(:disabled) {
+    transform: scale(1.1);
+    box-shadow: 0 8px 20px rgba(25, 135, 84, 0.4);
+    background-color: #157347;
+    border-color: #157347;
+}
+
+.confirm-character-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.confirm-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.confirm-character-image {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+    margin-bottom: 0.25rem;
+}
+
+.confirm-icon {
+    font-size: 3rem;
+    color: white;
+    font-weight: bold;
+}
+
+.confirm-text {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: white;
+    text-transform: uppercase;
 }
 
 .character-image {
@@ -43,7 +150,7 @@
 }
 
 .character-name {
-    font-size: 1rem;
+    font-size: 0.9rem;
     font-weight: 600;
     color: #0d6efd;
     text-align: center;
@@ -61,6 +168,81 @@
 .card-header p {
     font-size: 1.2rem;
     font-weight: 500;
+}
+
+.player-slot-machine {
+    position: relative;
+    overflow: hidden;
+    min-height: 2rem;
+}
+
+.player-slot-machine p {
+    font-size: 1.5rem;
+    font-weight: 700;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    animation: slideIn 0.1s ease-in-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(-20px);
+        opacity: 0.5;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.leaderboard-card {
+    max-width: 100%;
+    margin: 0 auto;
+}
+
+.leaderboard-card .card-header h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.leaderboard-card table {
+    margin-bottom: 0;
+}
+
+.leaderboard-card thead th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    border-bottom: 2px solid #dee2e6;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.leaderboard-card thead th:first-child,
+.leaderboard-card thead th:nth-child(2),
+.leaderboard-card thead th:nth-child(3) {
+    text-align: left;
+}
+
+.leaderboard-card tbody td {
+    vertical-align: middle;
+    text-align: center;
+}
+
+.leaderboard-card tbody td:first-child,
+.leaderboard-card tbody td:nth-child(2),
+.leaderboard-card tbody td:nth-child(3) {
+    text-align: left;
+}
+
+.leaderboard-card .table-warning {
+    background-color: #fff3cd !important;
+}
+
+.leaderboard-card .table-secondary {
+    background-color: #e2e3e5 !important;
+}
+
+.leaderboard-card .table-danger {
+    background-color: #f8d7da !important;
 }
 
 .brackets-container {

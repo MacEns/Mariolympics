@@ -1,6 +1,7 @@
 @page "/tournament/{TournamentId?}"
 @inject PersonRepository PersonRepository
 @inject TournamentRepository TournamentRepository
+@implements IDisposable
 
 <PageTitle>Mariolympics</PageTitle>
 
@@ -10,18 +11,28 @@
     <div class="btn-toolbar mb-2 mb-md-0">
         @if (!IsSelectingPlayers && !IsSelectingCharacters && Tournament == null)
         {
-            <button class="btn btn-sm btn-outline-primary" @onclick="StartPlayerSelection">
-                Select Players
+            <button class="btn btn-sm btn-primary" @onclick="StartPlayerSelection">
+                New Tournament
             </button>
         }
         else if (IsSelectingPlayers)
         {
-            <button class="btn btn-sm btn-outline-success" @onclick="StartCharacterSelection" disabled="@(SelectedPersons.Count < 2)">
+            <button class="btn btn-sm btn-success" @onclick="StartCharacterSelection" disabled="@(SelectedPersons.Count < 2)">
                 Continue to Character Selection (@SelectedPersons.Count selected)
             </button>
         }
         else if (Tournament != null)
         {
+            <button class="btn btn-sm btn-outline-info me-2" @onclick="ToggleLeaderboard">
+                @if (showLeaderboard)
+                {
+                    <span>🏆 Hide Leaderboard</span>
+                }
+                else
+                {
+                    <span>🏆 Show Leaderboard</span>
+                }
+            </button>
             <button class="btn btn-sm btn-success" @onclick="SaveTournament" disabled="@isSaving">
                 @if (isSaving)
                 {
@@ -52,16 +63,63 @@
         <div class="card">
             <div class="card-header bg-primary text-white">
                 <h3>Character Selection</h3>
-                <p class="mb-0">@CurrentSelectionPerson?.FullName, choose your character!</p>
+                <div class="player-slot-machine">
+                    <p class="mb-0">@DisplayedPlayerName, choose your character!</p>
+                </div>
             </div>
             <div class="card-body">
-                <div class="character-grid">
-                    @foreach (var character in AvailableCharacters)
+                <div class="character-grid-3x3">
+                    @{
+                        var allCharacters = Character.All;
+                        var selectedCharacter = temporarySelectedCharacter;
+                    }
+                    @for (int i = 0; i < 9; i++)
                     {
-                        <button class="btn btn-outline-primary character-card" @onclick="() => SelectCharacter(character)">
-                            <img src="@GetCharacterImagePath(character)" alt="@character.Value" class="character-image" />
-                            <div class="character-name">@character.Value</div>
-                        </button>
+                        @if (i == 4)
+                        {
+                            <!-- Confirm button in center (position 4) -->
+                            <div class="character-card-wrapper center-confirm">
+                                <button class="btn btn-success confirm-character-btn" 
+                                        @onclick="ConfirmCharacterSelection" 
+                                        disabled="@(temporarySelectedCharacter == null || isAnimating)">
+                                    <div class="confirm-content">
+                                        @if (temporarySelectedCharacter != null)
+                                        {
+                                            <img src="@GetCharacterImagePath(temporarySelectedCharacter)" alt="@temporarySelectedCharacter.Value" class="confirm-character-image" />
+                                        }
+                                        else
+                                        {
+                                            <span class="confirm-icon">✓</span>
+                                        }
+                                        <div class="confirm-text">@(temporarySelectedCharacter != null ? "Confirm" : "Select")</div>
+                                    </div>
+                                </button>
+                            </div>
+                        }
+                        else
+                        {
+                            // Map grid positions to character indices (skip center position)
+                            int charIndex = i < 4 ? i : i - 1;
+                            if (charIndex < allCharacters.Count)
+                            {
+                                var character = allCharacters[charIndex];
+                                bool isAvailable = AvailableCharacters.Any(c => c.Value == character.Value);
+                                bool isSelected = temporarySelectedCharacter?.Value == character.Value;
+                                
+                                <div class="character-card-wrapper">
+                                    <button class="btn character-card @(isAvailable ? "available" : "unavailable") @(isSelected ? "selected" : "")" 
+                                            @onclick="() => SelectCharacterTemporary(character)"
+                                            disabled="@(!isAvailable || isAnimating)">
+                                        <img src="@GetCharacterImagePath(character)" alt="@character.Value" class="character-image" />
+                                        <div class="character-name">@character.Value</div>
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="character-card-wrapper empty"></div>
+                            }
+                        }
                     }
                 </div>
             </div>
@@ -94,6 +152,91 @@
 
 @if (Tournament?.Brackets != null && Tournament.Brackets.Any())
 {
+    <!-- Leaderboard Card -->
+    @if (showLeaderboard)
+    {
+        <div class="leaderboard-card mt-4">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h3 class="mb-0">🏆 Leaderboard</h3>
+                </div>
+                <div class="card-body">
+                    @{
+                        var leaderboard = Tournament.GetLeaderboard();
+                    }
+                @if (leaderboard.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Player</th>
+                                    <th>Total Score</th>
+                                    @foreach (var bracket in Tournament.Brackets)
+                                    {
+                                        <th>@bracket.Game</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{
+                                    int rank = 1;
+                                    int? lastScore = null;
+                                    int displayRank = 1;
+                                }
+                                @foreach (var (player, totalScore) in leaderboard)
+                                {
+                                    if (lastScore.HasValue && totalScore != lastScore.Value)
+                                    {
+                                        displayRank = rank;
+                                    }
+                                    lastScore = totalScore;
+                                    
+                                    <tr class="@(displayRank <= 3 ? $"table-{GetRankClass(displayRank)}" : "")">
+                                        <td>
+                                            <strong>
+                                                @if (displayRank == 1) { <span>🥇</span> }
+                                                else if (displayRank == 2) { <span>🥈</span> }
+                                                else if (displayRank == 3) { <span>🥉</span> }
+                                                else { <span>@displayRank</span> }
+                                            </strong>
+                                        </td>
+                                        <td><strong>@player.Person.FullName</strong></td>
+                                        <td><strong>@totalScore</strong></td>
+                                        @foreach (var bracket in Tournament.Brackets)
+                                        {
+                                            var bracketScores = Tournament.CalculateBracketScores(bracket);
+                                            var playerBracketScore = bracketScores.FirstOrDefault(bs => bs.Player == player);
+                                            <td>
+                                                @if (playerBracketScore != null)
+                                                {
+                                                    <span class="badge bg-secondary">
+                                                        @GetPlacementText(playerBracketScore.Place) (@playerBracketScore.Points pts)
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">-</span>
+                                                }
+                                            </td>
+                                        }
+                                    </tr>
+                                    rank++;
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted mb-0">Complete matches to see the leaderboard</p>
+                }
+            </div>
+        </div>
+        </div>
+    }
+    
     <div class="brackets-container mt-4">
         <ul class="nav nav-tabs" role="tablist">
             @foreach (var bracket in Tournament.Brackets)
@@ -146,11 +289,20 @@
     private Person CurrentSelectionPerson => SelectionOrder.ElementAtOrDefault(CurrentSelectionIndex);
     private List<Character> AvailableCharacters { get; set; } = [];
     private List<Player> SelectedPlayers { get; set; } = [];
+    private Character temporarySelectedCharacter = null;
+    
+    // Slot machine animation state
+    private string DisplayedPlayerName { get; set; } = "";
+    private System.Threading.Timer slotTimer;
+    private bool isAnimating = false;
     
     // Save tournament state
     private bool isSaving = false;
     private string saveMessage = "";
     private bool saveSuccess = false;
+    
+    // Leaderboard state
+    private bool showLeaderboard = false;
 
     private bool debugPrint = false;
 
@@ -247,13 +399,68 @@
         
         // Reset available characters
         AvailableCharacters = new List<Character>(Character.All);
+        temporarySelectedCharacter = null;
+        
+        // Start slot machine animation
+        StartSlotAnimation();
+        
+        StateHasChanged();
+    }
+    
+    private void SelectCharacterTemporary(Character character)
+    {
+        if (character == null || isAnimating || !AvailableCharacters.Any(c => c.Value == character.Value))
+        {
+            return;
+        }
+        
+        temporarySelectedCharacter = character;
+        StateHasChanged();
+    }
+    
+    private void ConfirmCharacterSelection()
+    {
+        if (CurrentSelectionPerson == null || temporarySelectedCharacter == null || isAnimating)
+        {
+            return;
+        }
+        
+        // Create player with selected character
+        var player = new Player
+        {
+            Person = CurrentSelectionPerson,
+            CharacterName = temporarySelectedCharacter.Value
+        };
+        
+        SelectedPlayers.Add(player);
+        // Remove by value comparison
+        var toRemove = AvailableCharacters.FirstOrDefault(c => c.Value == temporarySelectedCharacter.Value);
+        if (toRemove != null)
+        {
+            AvailableCharacters.Remove(toRemove);
+        }
+        temporarySelectedCharacter = null;
+        CurrentSelectionIndex++;
+        
+        // Check if selection is complete
+        if (CurrentSelectionIndex >= SelectionOrder.Count)
+        {
+            IsSelectingCharacters = false;
+            StopSlotAnimation();
+            GenerateTournament();
+        }
+        else
+        {
+            // Start slot animation for next player
+            StartSlotAnimation();
+        }
         
         StateHasChanged();
     }
     
     private void SelectCharacter(Character character)
     {
-        if (CurrentSelectionPerson == null || character == null)
+        if (CurrentSelectionPerson == null || character == null || isAnimating)
         {
             return;
         }
@@ -273,7 +480,13 @@
         if (CurrentSelectionIndex >= SelectionOrder.Count)
         {
             IsSelectingCharacters = false;
+            StopSlotAnimation();
             GenerateTournament();
+        }
+        else
+        {
+            // Start slot animation for next player
+            StartSlotAnimation();
         }
         
         StateHasChanged();
@@ -346,6 +559,97 @@
             isSaving = false;
             StateHasChanged();
         }
+    }
+    
+    private void StartSlotAnimation()
+    {
+        isAnimating = true;
+        int spinCount = 0;
+        var random = new Random();
+        
+        // Get only the players who haven't picked yet (from current index onwards)
+        var remainingPlayers = SelectionOrder.Skip(CurrentSelectionIndex).ToList();
+        
+        // If no remaining players, don't animate
+        if (!remainingPlayers.Any())
+        {
+            isAnimating = false;
+            return;
+        }
+        
+        // Spin through names quickly, then slow down
+        slotTimer = new System.Threading.Timer(async _ =>
+        {
+            if (spinCount < 20)
+            {
+                // Fast spinning - only show remaining players
+                var randomPerson = remainingPlayers[random.Next(remainingPlayers.Count)];
+                DisplayedPlayerName = randomPerson.FullName;
+                spinCount++;
+                await InvokeAsync(StateHasChanged);
+            }
+            else if (spinCount < 30)
+            {
+                // Slow down - only show remaining players
+                var randomPerson = remainingPlayers[random.Next(remainingPlayers.Count)];
+                DisplayedPlayerName = randomPerson.FullName;
+                spinCount++;
+                await InvokeAsync(StateHasChanged);
+            }
+            else
+            {
+                // Land on the actual current person
+                DisplayedPlayerName = CurrentSelectionPerson?.FullName ?? "";
+                isAnimating = false;
+                slotTimer?.Dispose();
+                await InvokeAsync(StateHasChanged);
+            }
+        }, null, 0, 100); // Update every 100ms, slow down by changing interval
+        
+        // Schedule slowdown
+        Task.Delay(2000).ContinueWith(_ =>
+        {
+            slotTimer?.Change(0, 200); // Slow down to 200ms
+        });
+    }
+    
+    private void StopSlotAnimation()
+    {
+        slotTimer?.Dispose();
+        slotTimer = null;
+        isAnimating = false;
+    }
+    
+    public void Dispose()
+    {
+        StopSlotAnimation();
+    }
+    
+    private void ToggleLeaderboard()
+    {
+        showLeaderboard = !showLeaderboard;
+    }
+    
+    private string GetRankClass(int rank)
+    {
+        return rank switch
+        {
+            1 => "warning",  // Gold
+            2 => "secondary", // Silver
+            3 => "danger",   // Bronze
+            _ => ""
+        };
+    }
+    
+    private string GetPlacementText(int place)
+    {
+        return place switch
+        {
+            1 => "1st",
+            2 => "2nd",
+            3 => "3rd",
+            _ => $"{place}th"
+        };
     }
 
 }

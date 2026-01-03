@@ -1,5 +1,12 @@
 namespace Mariolympics.Models;
 
+public class BracketScore
+{
+    public Player Player { get; set; }
+    public int Place { get; set; }
+    public int Points { get; set; }
+}
+
 public class Bracket
 {
     public int Id { get; set; }
@@ -265,10 +272,12 @@ public class Bracket
         }
 
         // Check if this was a semi-final match and both semi-finals are now complete
-        if (BronzeMedalMatch != null && nextRound.RoundNumber == Rounds.Count)
+        // Semi-final is when the next round is the final round
+        if (BronzeMedalMatch != null && nextRound != null && nextRound.RoundNumber == Rounds.Count)
         {
-            // Check if both semi-final matches are now complete
-            var semiFinalRound = Rounds[Rounds.Count - 2];
+            // We just advanced a winner to the final, meaning we completed a semi-final
+            // The semi-final round is the current match's round
+            var semiFinalRound = match.Round;
             var allSemiFinalsComplete = semiFinalRound.Matches.All(m => m.Winner != null);
 
             if (allSemiFinalsComplete && BronzeMedalMatch.Player1 == null && BronzeMedalMatch.Player2 == null)
@@ -415,5 +424,92 @@ public class Bracket
             BronzeMedalMatch.Player1 = semiFinalists[0];
             BronzeMedalMatch.Player2 = semiFinalists[1];
         }
+    }
+
+    /// <summary>
+    /// Gets the placement (finishing position) for each player in the bracket
+    /// Returns a dictionary mapping players to their final placement
+    /// 1st = Champion, 2nd = Runner-up, 3rd = Bronze medal winner, etc.
+    /// </summary>
+    public Dictionary<Player, int> GetPlayerPlacements()
+    {
+        var placements = new Dictionary<Player, int>();
+
+        if (Rounds.Count == 0)
+            return placements;
+
+        // 1st Place: Champion (final winner)
+        var champion = GetChampion();
+        if (champion != null)
+        {
+            placements[champion] = 1;
+        }
+
+        // 2nd Place: Runner-up (final loser)
+        var finalMatch = Rounds.Last().Matches.FirstOrDefault();
+        if (finalMatch?.Winner != null)
+        {
+            var runnerUp = finalMatch.Player1 == finalMatch.Winner ? finalMatch.Player2 : finalMatch.Player1;
+            if (runnerUp != null)
+            {
+                placements[runnerUp] = 2;
+            }
+        }
+
+        // 3rd Place: Bronze medal winner
+        var bronzeWinner = GetBronzeMedalWinner();
+        if (bronzeWinner != null)
+        {
+            placements[bronzeWinner] = 3;
+        }
+
+        // 4th Place: Bronze medal loser
+        if (BronzeMedalMatch?.Winner != null)
+        {
+            var fourthPlace = BronzeMedalMatch.Player1 == BronzeMedalMatch.Winner ? BronzeMedalMatch.Player2 : BronzeMedalMatch.Player1;
+            if (fourthPlace != null)
+            {
+                placements[fourthPlace] = 4;
+            }
+        }
+
+        // Remaining placements: Work backwards through rounds
+        // Players eliminated in earlier rounds get lower placements
+        if (Rounds.Count >= 2)
+        {
+            var currentPlace = 5;
+
+            // Start from the round before semi-finals and work backwards
+            for (int roundIndex = Rounds.Count - 3; roundIndex >= 0; roundIndex--)
+            {
+                var round = Rounds[roundIndex];
+                var losersInRound = new List<Player>();
+
+                foreach (var match in round.Matches)
+                {
+                    if (match.Winner != null)
+                    {
+                        var loser = match.Player1 == match.Winner ? match.Player2 : match.Player1;
+                        if (loser != null && !placements.ContainsKey(loser))
+                        {
+                            losersInRound.Add(loser);
+                        }
+                    }
+                }
+
+                // All players eliminated in the same round share the same placement range
+                foreach (var loser in losersInRound)
+                {
+                    placements[loser] = currentPlace;
+                }
+
+                if (losersInRound.Count > 0)
+                {
+                    currentPlace += losersInRound.Count;
+                }
+            }
+        }
+
+        return placements;
     }
 }

@@ -10,5 +10,7 @@ public class Player
     public string CharacterName { get; set; }
     public Character Character => Character.Get(CharacterName);
 
+    public int Score { get; set; }
+
     public override string ToString() => Person?.FullName;
 }

@@ -1,15 +1,6 @@
 @using Mariolympics.Models
 
 <div class="bracket-component">
-    @if (Bracket != null && Bracket.Rounds.Any())
-    {
-        <div class="alert alert-info mb-3">
-            <strong>Bracket:</strong> @Bracket.Game | 
-            <strong>Rounds:</strong> @Bracket.Rounds.Count | 
-            <strong>Players:</strong> @Players?.Count |
-            <strong>Status:</strong> @GetBracketStatus()
-        </div>
-    }
 
     @if (AllowSwap && Bracket != null && Bracket.Rounds.Any() && Bracket.Rounds.First().Matches.Any(m => m.Winner == null))
     {
